@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>STARBRAWL — slippylabs.com</title>
+<link rel="stylesheet" href="css/style.css?v=1">
+</head>
+<body>
+<div class="starfield"></div>
+<div class="scanlines"></div>
+
+<main class="page-wrap">
+  <div class="hud-panel wide" id="app-panel">
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+
+    <!-- TITLE -->
+    <section class="screen active" id="screen-title">
+      <h1 class="brawl-title">STARBRAWL</h1>
+      <p class="subtitle">A slippylabs.com side project. Local or online 2-player platform fighter.</p>
+      <div class="menu-col">
+        <button class="hud-btn" id="btn-local">Local Match</button>
+        <button class="hud-btn" id="btn-online">Online Match</button>
+        <a class="hud-btn secondary-link" href="https://lab.slippylabs.com">&larr; Back to the Lab</a>
+      </div>
+      <div class="gamepad-status mono-digits" id="gamepad-status">No controllers detected — keyboard works for both players.</div>
+
+      <div class="controls-panel">
+        <div class="ctrl-hud-col">
+          <div class="ctrl-hud-name">Player 1 &middot; Keyboard</div>
+          <div class="ctrl-hud-row"><span>Move</span><kbd>A</kbd><kbd>D</kbd></div>
+          <div class="ctrl-hud-row"><span>Jump</span><kbd>W</kbd></div>
+          <div class="ctrl-hud-row"><span>Attack</span><kbd>J</kbd></div>
+          <div class="ctrl-hud-row"><span>Special</span><kbd>K</kbd></div>
+          <div class="ctrl-hud-row"><span>Shield</span><kbd>L</kbd></div>
+          <div class="ctrl-hud-row"><span>Grab</span><kbd>I</kbd></div>
+        </div>
+        <div class="ctrl-hud-col">
+          <div class="ctrl-hud-name">Player 2 &middot; Keyboard</div>
+          <div class="ctrl-hud-row"><span>Move</span><kbd>&lt;</kbd><kbd>&gt;</kbd></div>
+          <div class="ctrl-hud-row"><span>Jump</span><kbd>^</kbd></div>
+          <div class="ctrl-hud-row"><span>Attack</span><kbd>N1</kbd></div>
+          <div class="ctrl-hud-row"><span>Special</span><kbd>N2</kbd></div>
+          <div class="ctrl-hud-row"><span>Shield</span><kbd>N3</kbd></div>
+          <div class="ctrl-hud-row"><span>Grab</span><kbd>N5</kbd></div>
+        </div>
+        <div class="ctrl-hud-col">
+          <div class="ctrl-hud-name">Gamepad &middot; either slot</div>
+          <div class="ctrl-hud-row"><span>Move</span><kbd>Stick/D-Pad</kbd></div>
+          <div class="ctrl-hud-row"><span>Jump</span><kbd>A</kbd></div>
+          <div class="ctrl-hud-row"><span>Attack</span><kbd>X</kbd></div>
+          <div class="ctrl-hud-row"><span>Special</span><kbd>Y</kbd></div>
+          <div class="ctrl-hud-row"><span>Shield</span><kbd>LT/RT</kbd></div>
+          <div class="ctrl-hud-row"><span>Grab</span><kbd>B</kbd></div>
+        </div>
+      </div>
+      <p class="cs-hint mono-digits">Attack + a direction throws a tilt; push the stick further (or hold toward smash) for the bigger version — up/down/side/neutral, just like a real fighting game. Special works the same way and covers all 4 directions per character.</p>
+    </section>
+
+    <!-- ONLINE: create/join -->
+    <section class="screen" id="screen-online">
+      <h2 class="section-title">Online Match</h2>
+      <div class="menu-col">
+        <button class="hud-btn" id="btn-create-room">Create Room</button>
+        <div class="room-join-row">
+          <input class="tool-textarea mono-digits room-code-input" id="input-join-code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
+          <button class="hud-btn" id="btn-join-room">Join</button>
+        </div>
+        <div class="room-code-display mono-digits" id="room-code-display"></div>
+        <div class="online-status" id="online-status"></div>
+      </div>
+      <button class="hud-btn secondary-link" id="btn-online-back">&larr; Back</button>
+    </section>
+
+    <!-- CHARACTER SELECT -->
+    <section class="screen" id="screen-charselect">
+      <h2 class="section-title">Choose Your Fighter</h2>
+      <div class="cs-columns">
+        <div class="cs-panel" id="cs-panel-0">
+          <div class="cs-label">Player 1</div>
+          <canvas class="cs-portrait" id="cs-portrait-0" width="144" height="144"></canvas>
+          <div class="cs-name" id="cs-name-0">—</div>
+          <div class="cs-tagline" id="cs-tagline-0"></div>
+          <div class="cs-ready" id="cs-ready-0"></div>
+        </div>
+        <div class="cs-grid" id="cs-grid"></div>
+        <div class="cs-panel" id="cs-panel-1">
+          <div class="cs-label">Player 2</div>
+          <canvas class="cs-portrait" id="cs-portrait-1" width="144" height="144"></canvas>
+          <div class="cs-name" id="cs-name-1">—</div>
+          <div class="cs-tagline" id="cs-tagline-1"></div>
+          <div class="cs-ready" id="cs-ready-1"></div>
+        </div>
+      </div>
+      <p class="cs-hint mono-digits">Move: stick/D-pad/arrows &middot; Confirm: jump button &middot; Both players ready up to continue.</p>
+    </section>
+
+    <!-- STAGE + MODE SELECT (host only in online play) -->
+    <section class="screen" id="screen-stageselect">
+      <h2 class="section-title">Choose Stage &amp; Mode</h2>
+      <div class="stage-grid" id="stage-grid"></div>
+      <div class="mode-row" id="mode-row">
+        <div class="mode-group">
+          <span class="mode-label">Mode</span>
+          <button class="hud-tab mode-btn" data-mode="stock">Stock</button>
+          <button class="hud-tab mode-btn" data-mode="timed">Timed</button>
+        </div>
+        <div class="mode-group" id="stock-count-group">
+          <span class="mode-label">Stocks</span>
+          <button class="hud-tab count-btn mono-digits" data-count="2">2</button>
+          <button class="hud-tab count-btn mono-digits" data-count="3">3</button>
+          <button class="hud-tab count-btn mono-digits" data-count="5">5</button>
+        </div>
+        <div class="mode-group" id="time-count-group" style="display:none;">
+          <span class="mode-label">Minutes</span>
+          <button class="hud-tab count-btn mono-digits" data-time="2">2</button>
+          <button class="hud-tab count-btn mono-digits" data-time="3">3</button>
+          <button class="hud-tab count-btn mono-digits" data-time="5">5</button>
+        </div>
+      </div>
+      <button class="hud-btn" id="btn-start-match">Start Match</button>
+      <div class="waiting-note" id="stage-waiting-note" style="display:none;">Waiting for host to choose stage &amp; mode&hellip;</div>
+    </section>
+
+    <!-- MATCH -->
+    <section class="screen" id="screen-match">
+      <div class="canvas-wrap">
+        <canvas id="game-canvas" width="1280" height="720"></canvas>
+        <div class="net-waiting-badge mono-digits" id="net-waiting-badge" style="display:none;">SYNCING&hellip;</div>
+        <div class="controls-hud mono-digits" id="controls-hud"></div>
+      </div>
+      <div class="match-controls">
+        <button class="hud-btn small" id="btn-toggle-controls">Hide Controls</button>
+        <button class="hud-btn small" id="btn-quit-match">Quit</button>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="screen" id="screen-results">
+      <h2 class="section-title" id="results-title">Results</h2>
+      <div class="results-body" id="results-body"></div>
+      <div class="menu-col">
+        <button class="hud-btn" id="btn-rematch">Rematch</button>
+        <button class="hud-btn secondary-link" id="btn-main-menu">Main Menu</button>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="comm-window">
+    <div class="comm-portrait">🥊</div>
+    <div class="comm-body">
+      <div class="comm-label"><span class="dot"></span>TRANSMISSION</div>
+      <p>Plug in a controller before you queue up — StarBrawl reads standard-mapping gamepads automatically. No account, no download.</p>
+    </div>
+  </div>
+</main>
+
+<script src="socket.io.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
