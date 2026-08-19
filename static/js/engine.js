@@ -617,3 +617,107 @@ export function tick(match, inputs) {
     if (loser) { match.over = true; match.winnerIndex = 1 - loser.id; }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Rollback support: save / restore / checksum.
+//
+// tick() above is deterministic, which is what makes rollback possible at all
+// — but rollback also needs to rewind. These three functions are the whole of
+// that machinery: netplay.js snapshots every simulated frame, and rewinds to a
+// snapshot whenever a remote input arrives that contradicts what was predicted
+// for that frame.
+//
+// The state is *almost* plain data. The exceptions are handled explicitly
+// below; everything else is picked up generically by spread, so a field added
+// to createFighter/createMatch later is snapshotted automatically rather than
+// silently desyncing on the first rollback that touches it.
+// ---------------------------------------------------------------------------
+
+// `data` points into the character move table, which tick() never mutates —
+// keep the reference. `hitKeys` is a Set, which no shallow copy reproduces.
+function cloneMove(move) {
+  if (!move) return null;
+  return Object.assign({}, move, { hitKeys: new Set(move.hitKeys) });
+}
+
+// The spread copies `char` by reference, which is what we want: character stat
+// blocks are immutable shared data and deep-copying one 60 times a second
+// would cost more than the simulation it belongs to. movementOverride IS
+// mutated in place by applyPhysics (framesLeft), so it has to be copied.
+function cloneFighter(f) {
+  const copy = Object.assign({}, f);
+  copy.currentMove = cloneMove(f.currentMove);
+  copy.movementOverride = f.movementOverride ? Object.assign({}, f.movementOverride) : null;
+  return copy;
+}
+
+// NOTE: no JSON round-trip anywhere in this path. timeLimitFrames is Infinity
+// for stock matches, which JSON turns into null — a timed-out match on the
+// first rollback.
+export function saveState(match) {
+  const snap = Object.assign({}, match);
+  snap.fighters = match.fighters.map(cloneFighter);
+  snap.projectiles = match.projectiles.map((p) => Object.assign({}, p));
+  snap.hitFx = null; // transient render events, rebuilt from scratch every tick
+  return snap;
+}
+
+// Mutates `match` in place rather than returning a new object: main.js holds
+// S.match and the renderer holds the fighter objects, and reassigning would
+// strand both. Restoring re-clones out of the snapshot every time, because the
+// same snapshot can be restored more than once.
+export function restoreState(match, snap) {
+  for (const k of Object.keys(snap)) {
+    if (k === 'fighters' || k === 'projectiles' || k === 'hitFx') continue;
+    match[k] = snap[k];
+  }
+  for (let i = 0; i < snap.fighters.length; i += 1) {
+    const src = snap.fighters[i];
+    const dst = match.fighters[i];
+    // Drop fields the fighter has picked up since the snapshot (_diSx et al)
+    // so a rewound fighter is exactly what it was, not a superset.
+    for (const k of Object.keys(dst)) if (!(k in src)) delete dst[k];
+    Object.assign(dst, src);
+    dst.currentMove = cloneMove(src.currentMove);
+    dst.movementOverride = src.movementOverride ? Object.assign({}, src.movementOverride) : null;
+  }
+  match.projectiles = snap.projectiles.map((p) => Object.assign({}, p));
+  match.hitFx = [];
+}
+
+// FNV-1a over the gameplay-relevant state. Peers exchange this periodically to
+// turn a silent desync into a visible one.
+//
+// Floats are quantized to 1e-4 world units first. Two machines whose maths
+// differ in the last bit of a double would otherwise report a desync on
+// rounding noise alone; a *real* divergence amplifies through the physics
+// within a handful of frames and clears this threshold regardless.
+export function checksum(match) {
+  let h = 0x811c9dc5;
+  const byte = (b) => { h ^= b & 0xff; h = Math.imul(h, 0x01000193) >>> 0; };
+  const num = (n) => {
+    if (!Number.isFinite(n)) { byte(0xfe); return; }
+    let v = Math.round(n * 10000);
+    for (let i = 0; i < 4; i += 1) { byte(v); v = Math.floor(v / 256); }
+  };
+  const str = (s) => { for (let i = 0; i < s.length; i += 1) byte(s.charCodeAt(i)); };
+
+  num(match.frame);
+  byte(match.over ? 1 : 0);
+  num(match.winnerIndex);
+  for (const f of match.fighters) {
+    num(f.x); num(f.y); num(f.vx); num(f.vy);
+    num(f.facing); num(f.percent); num(f.stocks); num(f.kos); num(f.deaths);
+    str(f.state); num(f.stateFrame);
+    byte(f.grounded ? 1 : 0);
+    num(f.airJumpsLeft); num(f.shieldHP);
+    num(f.hitstunFrames); num(f.hitstopFrames);
+    num(f.invincibleFrames); num(f.intangibleFrames); num(f.ledgeCooldown);
+    num(f.grabTarget); num(f.grabbedBy); num(f.grabTimer);
+    byte(f.dead ? 1 : 0); num(f.respawnTimer);
+    if (f.currentMove) { str(f.currentMove.key); num(f.currentMove.frame); } else byte(0xff);
+  }
+  num(match.projectiles.length);
+  for (const p of match.projectiles) { num(p.x); num(p.y); num(p.vx); num(p.life); num(p.owner); }
+  return h >>> 0;
+}

@@ -1,10 +1,10 @@
 import { CHARACTERS, getCharacter } from './characters.js';
 import { STAGES, getStage } from './stages.js';
-import { createMatch, tick } from './engine.js';
+import { createMatch, tick, checksum as engineChecksum } from './engine.js';
 import { render, pushHitFx, drawFighterPortrait } from './renderer.js';
 import { InputPlayer, listGamepads } from './input.js';
 import { SIM_DT, KEYBOARD_SCHEMES } from './constants.js';
-import { NetClient, LockstepSim } from './netplay.js';
+import { NetClient, createNetSim } from './netplay.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game-canvas');
@@ -13,7 +13,7 @@ const ctx = canvas.getContext('2d');
 const S = {
   online: false,
   net: null,
-  lockstep: null,
+  netsim: null,          // RollbackSim (or LockstepSim) while an online match is running
   localIndex: 0,          // which fighter slot the local player controls (0 for local-P1/host, 0 or 1 online)
   localPlayers: [],        // InputPlayer instances — length 2 for local play, length 1 for online
   activePicker: 0,          // for local play: which slot mouse clicks currently assign to
@@ -25,6 +25,7 @@ const S = {
   timeMinutes: 3,
   match: null,
   running: false,
+  frozen: false,           // test hook: holds the rAF loop still so __sbNet can step exact frame counts
   navPrev: [{ l: false, r: false }, { l: false, r: false }],
   localSourceInfo: [],     // parallel to localPlayers — {type:'keyboard', scheme} | {type:'gamepad'}, drives the on-screen controls HUD
   controlsHudVisible: true,
@@ -55,7 +56,7 @@ window.addEventListener('gamepaddisconnected', updateGamepadStatus);
 $('btn-local').addEventListener('click', () => {
   S.online = false;
   S.net = null;
-  S.lockstep = null;
+  S.netsim = null;
   S.localPlayers = buildLocalTwoPlayers();
   resetPicks();
   enterCharSelect();
@@ -310,7 +311,7 @@ function startMatch(payload) {
     timeLimitSeconds: payload.timeMinutes * 60,
   });
   if (S.online) {
-    S.lockstep = new LockstepSim(S.match, S.localIndex, S.net);
+    S.netsim = createNetSim(S.match, S.localIndex, S.net);
   } else if (S.localPlayers.length < 2) {
     S.localPlayers = buildLocalTwoPlayers();
   }
@@ -436,7 +437,7 @@ $('btn-quit-match').addEventListener('click', goToMainMenu);
 
 function goToMainMenu() {
   if (S.net) { S.net.disconnect(); S.net = null; }
-  S.online = false; S.lockstep = null; S.match = null;
+  S.online = false; S.netsim = null; S.match = null;
   showScreen('screen-title');
 }
 
@@ -473,9 +474,20 @@ function stepMatchLocal() {
 }
 
 function stepMatchOnline() {
-  const advanced = S.lockstep.pump(S.localPlayers[0]);
-  $('net-waiting-badge').style.display = S.lockstep.waitingOnPeer() ? '' : 'none';
-  if (advanced > 0 && S.match.hitFx.length) pushHitFx(S.match.hitFx);
+  S.netsim.pump(S.localPlayers[0]);
+  // Only when prediction is actually exhausted — under rollback a late packet
+  // is routine and flashing the badge on every one of them would strobe.
+  $('net-waiting-badge').style.display = S.netsim.isStalled() ? '' : 'none';
+  // Not S.match.hitFx: a rolled-back frame is simulated more than once, and
+  // the sim hands back only the events from frames that are newly advanced.
+  const fx = S.netsim.drainFx();
+  if (fx) pushHitFx(fx);
+}
+
+// A predicted KO can be rolled back, so online play waits for the opponent's
+// real input on the deciding frame before the match is allowed to end.
+function matchIsOver() {
+  return S.online ? S.netsim.isOverConfirmed() : S.match.over;
 }
 
 let acc = 0;
@@ -487,21 +499,71 @@ function loop(now) {
 
   if (S.currentScreen === 'screen-charselect') pollCharSelectNav();
 
-  if (S.currentScreen === 'screen-match' && S.match && !S.match.over) {
+  if (S.currentScreen === 'screen-match' && S.match && !matchIsOver() && !S.frozen) {
     acc += dt;
     let guard = 0;
     while (acc >= SIM_DT && guard < 6) {
       if (S.online) stepMatchOnline(); else stepMatchLocal();
       acc -= SIM_DT;
       guard += 1;
-      if (S.match.over) break;
+      if (matchIsOver()) break;
     }
     render(ctx, S.match);
-    if (S.match.over) setTimeout(showResults, 900);
-  } else if (S.currentScreen === 'screen-match' && S.match && S.match.over) {
+    if (matchIsOver()) setTimeout(showResults, 900);
+  } else if (S.currentScreen === 'screen-match' && S.match && matchIsOver()) {
     render(ctx, S.match);
   }
 }
 requestAnimationFrame(loop);
 updateGamepadStatus();
 refreshModeUI();
+
+// --------------------------------------------------------- test hooks --
+//
+// Headless Chromium throttles requestAnimationFrame hard enough that
+// wall-clock timing is meaningless for netcode assertions (documented the
+// hard way in this project already, and the reason Slime Soccer's netcode
+// test drives its sim through equivalent __ssPump* hooks). These let a test
+// freeze the render loop and step an exact number of fixed frames instead.
+window.__sbNet = {
+  freeze(on = true) { S.frozen = on; },
+  // Advance the online sim by `n` fixed steps. Returns frames actually
+  // simulated, which is lower than n whenever prediction stalls.
+  pump(n = 1) {
+    if (!S.netsim) return 0;
+    const before = S.match.frame;
+    for (let i = 0; i < n; i += 1) stepMatchOnline();
+    return S.match.frame - before;
+  },
+  frame() { return S.match ? S.match.frame : -1; },
+  settle() { return S.netsim ? S.netsim.settle() : -1; },
+  confirmed() { return S.netsim && S.netsim.confirmed !== undefined ? S.netsim.confirmed : S.match.frame; },
+  rollbacks() { return S.netsim && S.netsim.rollbackCount !== undefined ? S.netsim.rollbackCount : 0; },
+  desynced() { return !!(S.netsim && S.netsim.desynced); },
+  stalled() { return S.netsim ? S.netsim.isStalled() : false; },
+  checksum() { return S.match ? engineChecksum(S.match) : 0; },
+  // Checksum of a *confirmed* frame, read out of the snapshot ring. Comparing
+  // live state across two clients is meaningless — at any instant each is
+  // predicting a different distance ahead — so agreement is only ever checked
+  // on a frame both sides have the opponent's real input for.
+  checksumAt(frame) {
+    const snap = S.netsim && S.netsim.snapshots && S.netsim.snapshots.get(frame);
+    return snap ? engineChecksum(snap) : null;
+  },
+  // 'rollback' or 'lockstep' — only rollback keeps a snapshot ring, so only it
+  // can be asked for the state at an earlier frame.
+  mode() { return S.netsim && S.netsim.snapshots ? 'rollback' : 'lockstep'; },
+  state() {
+    if (!S.match) return null;
+    return S.match.fighters.map((f) => ({ x: f.x, y: f.y, percent: f.percent, state: f.state, stocks: f.stocks }));
+  },
+  // Hold outgoing input packets back by `ms` to stand in for real latency.
+  setLatency(ms) {
+    if (!S.net) return;
+    if (!S.net._realSendInput) S.net._realSendInput = S.net.sendInput.bind(S.net);
+    S.net.sendInput = ms > 0
+      ? (frame, input, chk) => setTimeout(() => S.net._realSendInput(frame, input, chk), ms)
+      : S.net._realSendInput;
+  },
+  roomCode() { return S.net ? S.net.roomCode : null; },
+};

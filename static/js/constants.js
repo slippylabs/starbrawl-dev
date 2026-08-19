@@ -73,4 +73,20 @@ export const GAMEPAD_BUTTONS = {
 };
 export const GAMEPAD_STICK_DEADZONE = 0.28;
 
-export const NETPLAY_INPUT_DELAY = 4; // frames of input delay for lockstep sync
+// Netplay tuning. See netplay.js.
+//
+// Input delay is now 2 rather than 4: rollback covers the latency that the
+// delay used to hide, and 2 frames still absorbs LAN-range jitter without a
+// single rewind. Every frame here is ~16.7ms of lag on every button press.
+export const NETPLAY_INPUT_DELAY = 2;
+// How far ahead of confirmed remote input the sim will predict before it
+// stops and waits. Past ~10 frames the replay is mostly guesswork about what
+// the opponent did, and a client is better off plainly being behind than
+// being confidently wrong.
+export const MAX_ROLLBACK_FRAMES = 10;
+// Frames between checksum exchanges for desync detection.
+export const DESYNC_CHECK_EVERY = 60;
+// Use rollback (true) or the original input-delay lockstep (false). Kept as a
+// switch rather than deleting LockstepSim so a bad rollback in the wild is one
+// constant away from the known-good behaviour.
+export const NETPLAY_ROLLBACK = true;
