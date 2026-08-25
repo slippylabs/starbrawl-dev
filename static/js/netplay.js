@@ -17,7 +17,7 @@ export class NetClient {
   createRoom() {
     return new Promise((resolve) => {
       this.socket.emit('create_room');
-      this.socket.once('room_created', ({ code }) => { this.roomCode = code; this.playerIndex = 0; resolve(code); });
+      this.socket.once('room_created', ({ code, you }) => { this.roomCode = code; this.playerIndex = 0; this.myName = you || null; resolve(code); });
     });
   }
 
@@ -25,7 +25,7 @@ export class NetClient {
     return new Promise((resolve, reject) => {
       this.socket.emit('join_room', { code });
       this.socket.once('join_error', ({ reason }) => reject(new Error(reason)));
-      this.socket.once('match_found', ({ playerIndex }) => { this.roomCode = code; this.playerIndex = playerIndex; resolve(playerIndex); });
+      this.socket.once('match_found', ({ playerIndex, you, opponent }) => { this.roomCode = code; this.playerIndex = playerIndex; this.myName = you || null; this.opponentName = opponent || null; resolve(playerIndex); });
     });
   }
 

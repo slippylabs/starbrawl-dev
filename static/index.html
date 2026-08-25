@@ -34,6 +34,7 @@
       <div class="menu-col">
         <button class="hud-btn" id="btn-local">Local Match</button>
         <button class="hud-btn" id="btn-online">Online Match</button>
+        <span id="account-chip"></span>
         <a class="hud-btn secondary-link" href="https://lab.slippylabs.com">&larr; Back to the Lab</a>
       </div>
       <div class="gamepad-status mono-digits" id="gamepad-status">No controllers detected — keyboard works for both players.</div>
@@ -169,7 +170,18 @@
   </div>
 </main>
 
+<!-- Shared account client for every Lab game. Classic script: it must define
+     window.LabAccount before the deferred module below runs. -->
+<script src="https://lab.slippylabs.com/lab-account.js?v=4"></script>
 <script src="socket.io.min.js"></script>
-<script type="module" src="js/main.js"></script>
+<script type="module" src="js/main.js?v=2"></script>
+<script>
+// This game has no name field to fill in -- fighters were P1 and P2. The chip
+// is how a signed-in player sees that the server now seats them, and shows
+// their opponent, under a real name.
+(function () { if (window.LabAccount) window.LabAccount.mountAccountChip('#account-chip'); })();
+</script>
+<!-- Slippy Deck: floating Slippy TV + jukebox player. Renders nothing unless admin.slippylabs.com/whoami confirms a signed-in account. -->
+<script defer src="https://slippylabs.com/deck/deck.js"></script>
 </body>
 </html>

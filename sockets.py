@@ -9,10 +9,19 @@ import string
 
 from flask_socketio import join_room as sio_join_room, leave_room, emit
 
+import slippy_sso
+
 CODE_CHARS = "".join(c for c in string.ascii_uppercase + string.digits if c not in "0O1I")
 
-rooms = {}       # code -> {"sids": [sid, ...]}
+rooms = {}       # code -> {"sids": [sid, ...], "names": [str, ...]}
 sid_to_room = {}  # sid -> code
+
+
+def _fighter_name(index):
+    """Who a seat belongs to. This relay has never had a name concept -- players
+    were P1 and P2 -- so a signed-in account is the only real name available,
+    and a guest keeps the anonymous label they always had."""
+    return slippy_sso.current_username() or ("Player %d" % (index + 1))
 
 
 def _new_code():
@@ -26,10 +35,10 @@ def register(socketio):
     @socketio.on("create_room")
     def on_create_room():
         code = _new_code()
-        rooms[code] = {"sids": [request_sid()]}
+        rooms[code] = {"sids": [request_sid()], "names": [_fighter_name(0)]}
         sid_to_room[request_sid()] = code
         sio_join_room(code)
-        emit("room_created", {"code": code})
+        emit("room_created", {"code": code, "you": rooms[code]["names"][0]})
 
     @socketio.on("join_room")
     def on_join_room(data):
@@ -43,11 +52,16 @@ def register(socketio):
             return
         sid = request_sid()
         room["sids"].append(sid)
+        room.setdefault("names", ["Player 1"]).append(_fighter_name(1))
         sid_to_room[sid] = code
         sio_join_room(code)
-        # Tell each participant their own player index individually.
-        emit("match_found", {"playerIndex": 1}, room=sid)
-        emit("match_found", {"playerIndex": 0}, room=room["sids"][0])
+        names = room["names"]
+        # Tell each participant their own player index individually -- and now
+        # who they are up against, resolved server-side from each player's own
+        # session rather than anything either client claimed.
+        emit("match_found", {"playerIndex": 1, "you": names[1], "opponent": names[0]}, room=sid)
+        emit("match_found", {"playerIndex": 0, "you": names[0], "opponent": names[1]},
+             room=room["sids"][0])
 
     @socketio.on("pick")
     def on_pick(data):
