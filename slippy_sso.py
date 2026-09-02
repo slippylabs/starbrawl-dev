@@ -20,6 +20,12 @@ context, so `flask.g` is available in either):
 
     import slippy_sso
     name = slippy_sso.current_username() or client_supplied_name
+
+To gate a whole app on a service grant, use has_service() rather than reading
+`session["services"]` -- see its docstring for why that distinction matters:
+
+    if not slippy_sso.has_service("games"):
+        abort(403)
 """
 import json
 import os
@@ -42,7 +48,12 @@ def whoami():
     # the casino's CASINO_TEST_USER.
     test_user = os.environ.get("SLIPPY_SSO_TEST_USER")
     if test_user:
-        return {"authenticated": True, "username": test_user, "is_admin": False}
+        return {
+            "authenticated": True,
+            "username": test_user,
+            "is_admin": False,
+            "services": [s for s in os.environ.get("SLIPPY_SSO_TEST_SERVICES", "").split(",") if s],
+        }
 
     cached = getattr(g, "_slippy_whoami", None)
     if cached is not None:
@@ -73,6 +84,36 @@ def current_username():
 
 def is_admin():
     return bool(whoami().get("is_admin"))
+
+
+def services():
+    """Service slugs this account holds *right now*.
+
+    /whoami answers these from the database on every call (admin-console's
+    _live_services), not from the snapshot frozen into the session cookie."""
+    return whoami().get("services") or []
+
+
+def has_service(slug):
+    """Whether the signed-in account may reach `slug` at this moment.
+
+    Use this in place of `"<slug>" in session.get("services", [])`. That session
+    key is only a snapshot taken at login, so revoking a grant would not reach
+    anyone already signed in until their cookie expired -- up to
+    PERMANENT_SESSION_LIFETIME, a week. "Turn this person off" has to mean now.
+
+    Admins hold everything, matching admin-console's own _live_services() and
+    /auth-check. Reading is_admin live here also means de-admining someone takes
+    effect on their next request instead of at their next login.
+
+    Fails closed with the rest of this module: if admin-console cannot be
+    reached, nobody is granted anything."""
+    data = whoami()
+    if not data.get("authenticated"):
+        return False
+    if data.get("is_admin"):
+        return True
+    return slug in (data.get("services") or [])
 
 
 def resolve_name(claimed, fallback="", max_len=20):
