@@ -41,6 +41,21 @@ node test/rollback_netplay_test.mjs
 
 `/opt/starbrawl` is a **plain copy, not a checkout**, so it can drift from this repo in either direction. Check which side is newer before deploying over it.
 
+The unit and its drop-ins are **tracked in `deploy/`** — copy them into place by hand:
+
+| Path | Deploys to |
+| --- | --- |
+| `deploy/starbrawl.service` | `/etc/systemd/system/` |
+| `deploy/10-memory.conf`, `deploy/cpu-priority.conf`, `deploy/30-gunicorn-home.conf` | `/etc/systemd/system/starbrawl.service.d/` |
+| `deploy/starbrawl.slippylabs.conf` | `/etc/nginx/sites-available/` (symlinked into `sites-enabled`) |
+
+`30-gunicorn-home.conf` gives gunicorn a writable `HOME` via `RuntimeDirectory=`;
+without it gunicorn >=26 cannot open its control socket under `ProtectSystem=strict`
+and logs `Control server error` on every start.
+
+After changing anything in `deploy/`: `sudo systemctl daemon-reload` and restart the
+service (or `nginx -t && sudo systemctl reload nginx` for the site config).
+
 ## Notes
 
 Rollback is genuinely the right model here because the game is a deterministic two-player fighter. It is **not** the right model for Slime Sports — see `slimesoccer-dev` for why.

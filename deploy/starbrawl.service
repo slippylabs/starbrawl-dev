@@ -1,0 +1,27 @@
+[Unit]
+Description=starbrawl.slippylabs.com netplay relay server (gunicorn+gevent)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=starbrawl
+Group=starbrawl
+WorkingDirectory=/opt/starbrawl
+# --timeout is the worker HEARTBEAT deadline, not a request deadline: a gevent
+# worker touches a temp file each loop and the arbiter kills it once that goes
+# stale. gunicorn's 30s default is a request-shaped number and is wrong for an
+# async worker -- on 2 vCPUs the nightly backup or a capture_shots chromium run
+# can stall the heartbeat past 30s while the worker is perfectly healthy, and
+# the kill drops every live websocket on this service. That killed casino six
+# times on 2026-09-09. 300s leaves the arbiter able to reap a genuinely wedged
+# worker while giving normal load 10x headroom.
+ExecStart=/opt/starbrawl/venv/bin/gunicorn --timeout 300 --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 127.0.0.1:8011 app:app
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
