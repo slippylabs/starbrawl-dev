@@ -30,7 +30,7 @@ body {
 /* ---- moving space backdrop (same system as lab.slippylabs.com) ---- */
 .starfield {
   position: fixed;
-  inset: -12%;
+  inset: -400px;
   z-index: 0;
   pointer-events: none;
   background-image:
@@ -47,11 +47,12 @@ body {
   background-repeat: repeat;
   background-size: 340px 340px;
   opacity: 0.8;
+  will-change: transform;
   animation: starfield-fly 22s linear infinite;
 }
 @keyframes starfield-fly {
-  from { background-position: 0 0; }
-  to   { background-position: -340px 340px; }
+  from { transform: translate(0, 0); }
+  to   { transform: translate(-340px, 340px); }
 }
 
 .scanlines {
@@ -347,4 +348,22 @@ kbd {
 @media (max-width: 860px) {
   .cs-columns { grid-template-columns: 1fr; }
   .cs-panel { min-height: unset; }
+}
+
+/* ---- perf-lite -------------------------------------------------------------
+   Toggled on <html> by the inline perf-lite snippet (low-power devices) or by
+   the user's "reduce effects" preference. The starfield itself stays: it is a
+   compositor transform now and costs essentially nothing. What this drops are
+   the two effects that force full-viewport work every frame -- mix-blend-mode
+   compositing and backdrop-filter blur. */
+.perf-lite { --bg-panel: rgba(12, 26, 22, 0.95); }
+.perf-lite .scanlines { mix-blend-mode: normal; opacity: 0.4; }
+.perf-lite .starfield,
+.perf-lite .asteroid,
+.perf-lite .asteroid-spin { animation: none; }
+.perf-lite *,
+.perf-lite *::before,
+.perf-lite *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
