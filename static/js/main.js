@@ -4,7 +4,7 @@ import { createMatch, tick, checksum as engineChecksum } from './engine.js';
 import { render, pushHitFx, drawFighterPortrait } from './renderer.js';
 import { InputPlayer, listGamepads } from './input.js';
 import { SIM_DT, KEYBOARD_SCHEMES } from './constants.js';
-import { NetClient, createNetSim } from './netplay.js';
+import { NetClient, createNetSim } from './netplay.js?v=ws1';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game-canvas');
@@ -92,6 +92,11 @@ $('btn-join-room').addEventListener('click', async () => {
 });
 
 function wireNetHandlers() {
+  // Nothing reached the server yet: say so instead of waiting forever.
+  S.net.socket.on('connect_error', () => {
+    if (!S.net || S.net.socket.connected) return;
+    $('online-status').textContent = 'Cannot reach the game server -- retrying...';
+  });
   S.net.onOpponentJoined(({ playerIndex }) => {
     S.online = true;
     S.localIndex = playerIndex;

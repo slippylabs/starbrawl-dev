@@ -10,6 +10,18 @@ import { tick, saveState, restoreState, checksum } from './engine.js';
 export class NetClient {
   constructor() {
     this.socket = io({ transports: ['websocket', 'polling'] });
+    // A network that blocks WebSockets outright (VPNs, antivirus web shields, work
+    // Wi-Fi) never connects on the line above, and socket.io 4.7 never tries the
+    // next transport by itself -- ['websocket', 'polling'] does NOT fall back. So
+    // after the first failure retry over polling, upgrading when it can (the
+    // pattern socket.io's docs give).
+    { let fellBack = false;
+      this.socket.on('connect_error', () => {
+        if (fellBack || !this.socket.io) return;
+        fellBack = true;
+        this.socket.io.opts.transports = ['polling', 'websocket'];
+        this.socket.io.opts.upgrade = true;
+      }); }
     this.playerIndex = -1;
     this.roomCode = null;
   }
