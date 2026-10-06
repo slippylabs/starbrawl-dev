@@ -552,6 +552,21 @@ refreshModeUI();
 // returns.
 window.__ip = {
   it: interp,
+  /**
+   * Advance a LOCAL match by fixed steps, captured the way the loop drives it.
+   *
+   * __sbNet.pump is online-only, so a play test of a local match had no way to
+   * own the clock -- and the simulation cannot advance on its own inside one
+   * synchronous evaluate, so without this it measured a still frame.
+   */
+  step(n = 1) {
+    for (let i = 0; i < n; i++) {
+      if (!S.match || matchIsOver()) break;
+      capture(interp, S.match);
+      stepMatchLocal();
+    }
+    return S.match ? S.match.frame : -1;
+  },
   /** Start a local match without clicking through the menus. */
   quickMatch(stageId) {
     startMatch({
