@@ -4,6 +4,7 @@ import { createMatch, tick, checksum as engineChecksum } from './engine.js';
 import { render, pushHitFx, drawFighterPortrait } from './renderer.js';
 import { InputPlayer, listGamepads } from './input.js';
 import { SIM_DT, KEYBOARD_SCHEMES } from './constants.js';
+import { makeInterp, capture, drawAt } from './interp.js';
 import { NetClient, createNetSim } from './netplay.js?v=ws1';
 
 const $ = (id) => document.getElementById(id);
@@ -497,6 +498,18 @@ function matchIsOver() {
 
 let acc = 0;
 let last = performance.now();
+
+// Drawn between simulation steps -- see js/interp.js for why reading a
+// fighter's x straight out of the match stutters on anything but a 60 Hz
+// panel. Fighters and projectiles only: the renderer's own particles are
+// advanced in render() off their own life counter, and hitFx is transient.
+const interp = makeInterp({
+  entities: (m) => (m ? [...m.fighters, ...m.projectiles] : null),
+  fields: ['x', 'y'],
+  // A blast-off and a respawn put a fighter across the stage in one step.
+  snap: 120,
+});
+
 function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.25, (now - last) / 1000);
@@ -508,12 +521,15 @@ function loop(now) {
     acc += dt;
     let guard = 0;
     while (acc >= SIM_DT && guard < 6) {
+      // BEFORE the step, inside the loop: a frame that steps twice must leave
+      // behind the state from before the SECOND step.
+      capture(interp, S.match);
       if (S.online) stepMatchOnline(); else stepMatchLocal();
       acc -= SIM_DT;
       guard += 1;
       if (matchIsOver()) break;
     }
-    render(ctx, S.match);
+    drawAt(interp, S.match, acc / SIM_DT, () => render(ctx, S.match));
     if (matchIsOver()) setTimeout(showResults, 900);
   } else if (S.currentScreen === 'screen-match' && S.match && matchIsOver()) {
     render(ctx, S.match);
@@ -530,6 +546,33 @@ refreshModeUI();
 // hard way in this project already, and the reason Slime Soccer's netcode
 // test drives its sim through equivalent __ssPump* hooks). These let a test
 // freeze the render loop and step an exact number of fixed frames instead.
+// What the blend drew, for tools/interp_test.py. redraw() is the real draw
+// path at a chosen alpha -- there is no other way to see a blended position
+// from outside, because swap-and-restore has put it back by the time the frame
+// returns.
+window.__ip = {
+  it: interp,
+  /** Start a local match without clicking through the menus. */
+  quickMatch(stageId) {
+    startMatch({
+      stageId: stageId || STAGES[0].id,
+      charIds: [CHARACTERS[0].id, CHARACTERS[1].id],
+      mode: 'stock',
+      stockCount: 3,
+      timeMinutes: 2,
+    });
+    return !!S.match;
+  },
+  checksum() { return S.match ? engineChecksum(S.match) : 0; },
+  redraw(alpha) {
+    interp.record = true;
+    try {
+      drawAt(interp, S.match, alpha, () => render(ctx, S.match));
+      return { alpha: interp.alpha, blended: interp.blended, snapped: interp.snapped, drawn: interp.drawn.slice() };
+    } finally { interp.record = false; }
+  },
+};
+
 window.__sbNet = {
   freeze(on = true) { S.frozen = on; },
   // Advance the online sim by `n` fixed steps. Returns frames actually
