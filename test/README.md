@@ -52,3 +52,13 @@ It also runs against the lockstep fallback (`NETPLAY_ROLLBACK = false` in
 `constants.js`) and adapts its assertions. That comparison is worth running
 after any netcode change: at 60ms injected latency lockstep stalled on 17 of 40
 sampled pumps, rollback on 0.
+
+## `reconnect_test.mjs` — a dropped socket (v1.4.1)
+
+Same environment variables and server as `rollback_test.mjs`. Forces a
+transport drop (`socket.io.engine.close()`) on the room creator and on the
+joiner, in character select and mid-match, and asserts no client is left on an
+online screen its opponent has left. socket.io reconnects on its own as a new
+socket in no room, so before v1.4.1 the dropped player sat in a lobby nobody
+else was in, or a match frozen on SYNCING, while the opponent had already been
+sent to the menu. All four cases failed on v1.4.0.

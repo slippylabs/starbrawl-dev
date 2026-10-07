@@ -117,6 +117,18 @@ function wireNetHandlers() {
     alert('Your opponent disconnected.');
     goToMainMenu();
   });
+  // Our OWN socket dropping ends the session too. The server releases the seat
+  // the moment the transport closes and tells the opponent (peer_left above),
+  // so socket.io's automatic reconnect comes back as a new socket in no room.
+  // Staying put meant a lobby nobody else was in, or a match frozen on
+  // SYNCING forever. A rollback match cannot be resumed honestly either: every
+  // input sent while the socket was down went nowhere. So say so and leave.
+  const net = S.net;
+  net.socket.on('disconnect', (reason) => {
+    if (reason === 'io client disconnect' || S.net !== net) return;
+    goToMainMenu();
+    alert('Lost the connection to the game server. The online match has ended.');
+  });
 }
 
 function pickLocalSource() {
