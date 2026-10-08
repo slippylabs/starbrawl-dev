@@ -62,3 +62,32 @@ online screen its opponent has left. socket.io reconnects on its own as a new
 socket in no room, so before v1.4.1 the dropped player sat in a lobby nobody
 else was in, or a match frozen on SYNCING, while the opponent had already been
 sent to the menu. All four cases failed on v1.4.0.
+
+## `halfopen_test.mjs` + `halfopen_proto_test.py` — a half-open drop (v1.4.2)
+
+A half-open drop is a Wi-Fi handoff or a sleeping phone. The old WebSocket
+stops delivering in both directions without closing, so the server keeps the
+seat until its ping timeout, and a fresh socket from the same player can arrive
+while the stale one still holds it.
+
+    venv-with-websocket-client/bin/python test/halfopen_proto_test.py http://127.0.0.1:8111
+    node test/halfopen_test.mjs        # same env vars as rollback_test.mjs
+
+The protocol probe uses raw socket.io clients. It checks that a new socket
+joining the old room code gets "Room is full." rather than a second seat, that
+its input is not relayed, that the live old socket's input is relayed exactly
+once, and that the old socket's late disconnect sends exactly one `peer_left`
+and leaves the new socket alone. This venv's python-socketio lacks
+websocket-client. Any venv that has it will do (e.g. duskwatch-dev's).
+
+The browser probe freezes the dropped page's WebSocket in 8 cases: creator and
+joiner, lobby and mid-match. In the "notice" cases the page also sees the
+transport close and tries the same code again at once. In the "silent" cases
+nobody notices anything until the server's timeout.
+
+Don't judge this with a single look at 55 s. engine.io's worst case is
+ping_interval 25 + ping_timeout 20, plus one service-task sweep that can add
+another ping_timeout, so roughly 65 s. On the live box the cases cleared
+between 33 and 58 s, and a fixed 55 s check failed once on that alone. The
+probe polls to 120 s and prints when each case cleared. Both probes pass on
+v1.4.1 unchanged.
