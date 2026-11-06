@@ -1,5 +1,7 @@
 # StarBrawl — Backend
 
+> **ARCHIVED 2026-11-06.** Retired: nobody was playing it and no more work is planned. `starbrawl.slippylabs.com` now 301s to the [Lab hub](https://lab.slippylabs.com), and the game is delisted from the hub, the home page and the GitHub profile. `starbrawl.service` (port 8011) is stopped and disabled, its unit files are in `~/archive/starbrawl-systemd-2026-11-06/`, `/opt/starbrawl` is left in place and tarred to `~/archive/starbrawl-opt-2026-11-06.tar.gz`. The vhost that served it is in `~/archive/starbrawl.slippylabs.conf.served-2026-11-06`. Its highscore entries and old leaderboard rows were kept. The notes below are history.
+
 **Live:** <https://starbrawl.slippylabs.com/>
 
 ## What it is
